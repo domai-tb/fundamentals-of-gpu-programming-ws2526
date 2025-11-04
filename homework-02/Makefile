@@ -2,7 +2,7 @@ TARGET = matrix_addition
 
 NVCC = nvcc
 
-CUDA_FLAGS = -I. -I/opt/cuda/include
+CUDA_FLAGS = -I. -I/opt/cuda/include -I/opt/cuda/samples/common
 CUDA_SOURCES = ${TARGET}.cu
 CUDA_OBJECTS = ${TARGET}.o
 
