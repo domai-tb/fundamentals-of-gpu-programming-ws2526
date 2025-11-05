@@ -85,6 +85,28 @@ int addMatrixsCPU(const Matrix m1, const Matrix m2) {
     return EXIT_SUCCESS;
 }
 
+__global__ int addMatrixsKernel(const Matrix m1, const Matrix m2) {
+    if (m1.dimX != m2.dimX || m1.dimY != m2.dimY) {
+        fprintf(stderr, "Matrix dimensions does not match.\n");
+        return EXIT_FAILURE;
+    }
+
+    unsigned int x = blockIdx.x * blockDim.x * threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y * threadIdx.y;
+    unsigned int idx = y * m1.dimX + x
+
+    m1.elements[idx] += m2.elements[idx];
+}
+
+int addMatrixsGPU(const Matrix m1, const Matrix m2) {
+    if (m1.dimX != m2.dimX || m1.dimY != m2.dimY) {
+        fprintf(stderr, "Matrix dimensions does not match.\n");
+        return EXIT_FAILURE;
+    }
+
+    
+}
+
 int main(void) {
 
     // Setup GPU
