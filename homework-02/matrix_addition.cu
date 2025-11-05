@@ -6,20 +6,33 @@
 #include <helper_cuda.h>
 #include <helper_functions.h>
 
-// Global definition of test cases
-const unsigned int NUM_MAT_SIZES = 5;
-const unsigned int NUM_TESTCASES_PER_MAT_SIZE = 5;
-const unsigned int MATRIX_DIM_X[NUM_MAT_SIZES] = {10,100,1000,500,100};
-const unsigned int MATRIX_DIM_Y[NUM_MAT_SIZES] = {10,100,1000,2000,10000};
-
-float EXECUTION_TIME_CPU, EXECUTION_TIME_GPU;
-
-// Matriy type definition
+// Matrix type definition
 typedef struct {
     unsigned int dimX;
     unsigned int dimY;
     float* elements; 
 } Matrix;
+
+// BlockSize type definition
+typedef struct {
+    unsigned int x;
+    unsigned int y;
+} BlockSize;
+
+// Global definition of test cases
+const unsigned int NUM_MAT_SIZES = 5;
+const unsigned int NUM_TESTCASES_PER_MAT_SIZE = 1;
+const unsigned int MATRIX_DIM_X[NUM_MAT_SIZES] = {10,100,1000,500,100};
+const unsigned int MATRIX_DIM_Y[NUM_MAT_SIZES] = {10,100,1000,2000,10000};
+
+float EXECUTION_TIME_CPU, EXECUTION_TIME_GPU;
+
+const unsigned int NUM_BLOCK_SIZES = 3;
+const BlockSize BLOCK_SIZES[NUM_BLOCK_SIZES] = {
+    BlockSize{16, 16},
+    BlockSize{16, 32},
+    BlockSize{32, 16}
+};
 
 /// Print matrix m to stdout
 void printMatrix(Matrix m) {
@@ -83,7 +96,7 @@ void freeDeviceMatrix(Matrix* m) {
 }
 
 /// Add two matrixs on CPU. 
-/// Takes two matrixs as arguments and will calculate m1 = m1 + m2.
+/// Takes two matrixs as arguments and will calculate result = m1 + m2.
 /// Returns EXIT_FAILURE if an error occurs.
 int addMatrixsCPU(const Matrix m1, const Matrix m2, Matrix result) {
     if (m1.dimX != m2.dimX || m1.dimY != m2.dimY) {
@@ -125,9 +138,9 @@ __global__ void addMatrixsKernel(const Matrix m1, const Matrix m2, Matrix result
 }
 
 /// Add two matrixs on GPU. 
-/// Takes two matrixs as arguments and will calculate m1 = m1 + m2.
+/// Takes two matrixs as arguments and will calculate result = m1 + m2.
 /// Returns EXIT_FAILURE if an error occurs.
-int addMatrixsGPU(const Matrix m1, const Matrix m2, Matrix result) {
+int addMatrixsGPU(const Matrix m1, const Matrix m2, Matrix result, BlockSize bs) {
     if (m1.dimX != m2.dimX || m1.dimY != m2.dimY) {
         fprintf(stderr, "Matrix dimensions does not match.\n");
         return EXIT_FAILURE;
@@ -142,7 +155,7 @@ int addMatrixsGPU(const Matrix m1, const Matrix m2, Matrix result) {
     copyToDeviceMatrix(dM2, m2);
 
     // Define block and grid sizes
-    dim3 blockSize(16, 16);
+    dim3 blockSize(bs.x, bs.y);
     dim3 gridSize(
         (m1.dimX + blockSize.x - 1) / blockSize.x,
         (m1.dimY + blockSize.y - 1) / blockSize.y
@@ -181,25 +194,28 @@ int main(void) {
     cudaSetDevice(0);
 
     // Iterate over test cases
-    for (unsigned int i = 0; i < NUM_MAT_SIZES; i++) {
-        printf("%d) Test Case of %dx%d Matrix:\n", i+1, MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
+    for (unsigned int h = 0; h < NUM_BLOCK_SIZES; h++) {
+        printf("Perform Testcases of block size (%d, %d):\n", BLOCK_SIZES[h].x, BLOCK_SIZES[h].y);
+        for (unsigned int i = 0; i < NUM_MAT_SIZES; i++) {
+            printf("|-- %d) Test Case of %dx%d Matrix:\n", i+1, MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
 
-        EXECUTION_TIME_CPU = 0; // Reset 
-        EXECUTION_TIME_GPU = 0; // Reset 
-        for (unsigned int j = 0; j < NUM_TESTCASES_PER_MAT_SIZE; j++) {
-            // Generate a randomly initilized matrix
-            Matrix m1 = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
-            Matrix m2 = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
-            Matrix resultCPU = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
-            Matrix resultGPU = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
+            EXECUTION_TIME_CPU = 0; // Reset 
+            EXECUTION_TIME_GPU = 0; // Reset 
+            for (unsigned int j = 0; j < NUM_TESTCASES_PER_MAT_SIZE; j++) {
+                // Generate a randomly initilized matrix
+                Matrix m1 = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
+                Matrix m2 = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
+                Matrix resultCPU = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
+                Matrix resultGPU = generateMatrix(MATRIX_DIM_X[i], MATRIX_DIM_Y[i]);
 
-            // Perform Addition
-            addMatrixsCPU(m1, m2, resultCPU);
-            addMatrixsGPU(m1, m2, resultGPU);
+                // Perform Addition
+                addMatrixsCPU(m1, m2, resultCPU);
+                addMatrixsGPU(m1, m2, resultGPU, BLOCK_SIZES[h]);
+            }
+
+            printf("   |--> Average CPU Execution Time:\t%fms\n", EXECUTION_TIME_CPU / NUM_TESTCASES_PER_MAT_SIZE);
+            printf("   |--> Average GPU Execution Time:\t%fms\n\n", EXECUTION_TIME_GPU / NUM_TESTCASES_PER_MAT_SIZE); 
         }
-
-        printf("   |--> Average CPU Execution Time:\t%fms\n", EXECUTION_TIME_CPU / NUM_TESTCASES_PER_MAT_SIZE);
-        printf("   |--> Average GPU Execution Time:\t%fms\n\n", EXECUTION_TIME_GPU / NUM_TESTCASES_PER_MAT_SIZE); 
     }
 
     cudaDeviceReset();
