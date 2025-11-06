@@ -34,6 +34,26 @@ const BlockSize BLOCK_SIZES[NUM_BLOCK_SIZES] = {
     BlockSize{32, 16}
 };
 
+/// Overload the (in)equality operator for Matrix
+bool operator!=(const Matrix& m1, const Matrix& m2) {
+    if (m1.dimX != m2.dimX || m1.dimY != m2.dimY) {
+        return true;
+    }
+
+    for (unsigned int i = 0; i < m1.dimX * m1.dimY; ++i) {
+        if (m1.elements[i] != m2.elements[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Free matrix memory
+void cleanupMatrix(Matrix& matrix) {
+    delete[] matrix.elements;
+}
+
 /// Print matrix m to stdout
 void printMatrix(Matrix m) {
 	for(unsigned int y = 0; y < m.dimY; y++) {
@@ -210,7 +230,12 @@ int main(void) {
 
                 // Perform Addition
                 addMatrixsCPU(m1, m2, resultCPU);
-                addMatrixsGPU(m1, m2, resultGPU, BLOCK_SIZES[h]);
+                addMatrixsGPU(m1, m2, resultGPU, BLOCK_SIZES[h]); // handles device memory
+
+                // Check equality of matrixs
+                // if (resultCPU != resultGPU) {
+                //     printf("   |--> Calculation of CPU and GPU are different !!!\n");
+                // }
             }
 
             printf("   |--> Average CPU Execution Time:\t%fms\n", EXECUTION_TIME_CPU / NUM_TESTCASES_PER_MAT_SIZE);
