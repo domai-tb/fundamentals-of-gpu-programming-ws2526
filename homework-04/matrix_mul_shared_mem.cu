@@ -4,15 +4,7 @@
 #include <math.h>
 
 #include <cuda_runtime.h>
-#include <helper_functions.h>  // StopWatchInterface, sdk*Timer
-
-/// CUDA error checking function
-void cudaErr(cudaError_t err) {
-    if (err != cudaSuccess) {
-        printf("CUDA error: %s\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-}
+#include <helper_functions.h>
 
 /// Matrix type definition
 typedef struct {
@@ -27,9 +19,13 @@ typedef struct {
     unsigned int y;
 } BlockSize;
 
-/// Global execution time accumulators (ms)
+/// Global execution time accumulators
 float EXECUTION_TIME_CPU = 0.0f;
 float EXECUTION_TIME_GPU_NAIVE = 0.0f;
+
+/// Tile width definitions
+const unsigned int NUM_TILE_WIDTHS = 3;
+const unsigned int TILE_WIDTHS[NUM_TILE_WIDTHS] = {8, 16, 32};
 
 /// Tolerance for floating point comparison
 const float EPSILON = 1e-3f;
@@ -50,6 +46,14 @@ bool operator!=(const Matrix& m1, const Matrix& m2) {
     }
 
     return false;
+}
+
+/// CUDA error checking function
+void cudaErr(cudaError_t err) {
+    if (err != cudaSuccess) {
+        printf("CUDA error: %s\n", cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
 }
 
 /// Free matrix memory on host
@@ -221,7 +225,7 @@ __global__ void matMulTiledKernel(const Matrix A, const Matrix B, Matrix C, unsi
 
 /// GPU naive matrix multiplication wrapper
 /// Returns EXIT_FAILURE if dimensions mismatch
-int matMulGPU_Naive(const Matrix A, const Matrix B, Matrix C, BlockSize bs) {
+int matMulGPUNaive(const Matrix A, const Matrix B, Matrix C, BlockSize bs) {
     if (A.dimX != B.dimY || C.dimY != A.dimY || C.dimX != B.dimX) {
         fprintf(stderr, "Matrix dimensions do not match for multiplication (GPU naive).\n");
         return EXIT_FAILURE;
@@ -267,7 +271,7 @@ int matMulGPU_Naive(const Matrix A, const Matrix B, Matrix C, BlockSize bs) {
 
 /// GPU tiled matrix multiplication wrapper for a given tileWidth
 /// Returns EXIT_FAILURE if dimensions mismatch
-int matMulGPU_Tiled(const Matrix A, const Matrix B, Matrix C, unsigned int tileWidth, float* timeMsOut) {
+int matMulGPUTiled(const Matrix A, const Matrix B, Matrix C, unsigned int tileWidth, float* timeMsOut) {
     if (A.dimX != B.dimY || C.dimY != A.dimY || C.dimX != B.dimX) {
         fprintf(stderr, "Matrix dimensions do not match for multiplication (GPU tiled).\n");
         return EXIT_FAILURE;
@@ -316,11 +320,12 @@ int matMulGPU_Tiled(const Matrix A, const Matrix B, Matrix C, unsigned int tileW
     return EXIT_SUCCESS;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
     unsigned int M_rows = 10000;
     unsigned int M_cols = 5000;
     unsigned int N_cols = 20000;
 
+    // Just for testing with smaller values
     if (argc == 4) {
         M_rows = (unsigned int)atoi(argv[1]);
         M_cols = (unsigned int)atoi(argv[2]);
@@ -375,7 +380,7 @@ int main(int argc, char** argv) {
     bs.x = 16;
     bs.y = 16;
     printf("Running naive GPU matrix multiplication (block %ux%u)...\n", bs.x, bs.y);
-    if (matMulGPU_Naive(M, N, P_gpu_naive, bs) != EXIT_SUCCESS) {
+    if (matMulGPUNaive(M, N, P_gpu_naive, bs) != EXIT_SUCCESS) {
         fprintf(stderr, "GPU naive matrix multiplication failed.\n");
         return EXIT_FAILURE;
     }
@@ -389,9 +394,6 @@ int main(int argc, char** argv) {
     printf("Naive GPU time: %.3f ms\n", EXECUTION_TIME_GPU_NAIVE);
     printf("Speedup naive GPU vs CPU: %.2fx\n\n", EXECUTION_TIME_CPU / EXECUTION_TIME_GPU_NAIVE);
 
-    const unsigned int NUM_TILE_WIDTHS = 3;
-    const unsigned int TILE_WIDTHS[NUM_TILE_WIDTHS] = {8, 16, 32};
-
     printf("Running tiled GPU matrix multiplication with shared memory:\n");
     for (unsigned int i = 0; i < NUM_TILE_WIDTHS; ++i) {
         unsigned int tileWidth = TILE_WIDTHS[i];
@@ -403,7 +405,7 @@ int main(int argc, char** argv) {
 
         float timeMsTiled = 0.0f;
 
-        if (matMulGPU_Tiled(M, N, P_gpu_tiled, tileWidth, &timeMsTiled) != EXIT_SUCCESS) {
+        if (matMulGPUTiled(M, N, P_gpu_tiled, tileWidth, &timeMsTiled) != EXIT_SUCCESS) {
             fprintf(stderr, "GPU tiled matrix multiplication failed for TILE_WIDTH = %u.\n", tileWidth);
             continue;
         }

@@ -2,7 +2,7 @@ TARGET = matrix_mul_shared_mem
 
 NVCC = nvcc
 
-CUDA_FLAGS = -I. -I/opt/cuda/include -I/opt/cuda/samples/common
+CUDA_FLAGS = -I. -I/opt/cuda/include -I/opt/cuda/samples/common -O4
 CUDA_SOURCES = ${TARGET}.cu
 CUDA_OBJECTS = ${TARGET}.o
 
