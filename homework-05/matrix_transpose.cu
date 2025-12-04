@@ -8,8 +8,8 @@
 
 /// Matrix type definition
 typedef struct {
-    unsigned int dimX;    // number of columns
-    unsigned int dimY;    // number of rows
+    unsigned int dimX;
+    unsigned int dimY;
     float* elements;
 } Matrix;
 
@@ -17,8 +17,8 @@ typedef struct {
 const unsigned int TILE_DIM   = 32;
 const unsigned int BLOCK_ROWS = 8;
 
-/// Number of repetitions inside kernels (for better timing accuracy)
-const unsigned int REPETITIONS = 1;
+/// Number of repetitions inside kernels
+const unsigned int REPETITIONS = 4;
 
 /// Tolerance for floating point comparison
 const float EPSILON = 1e-3f;
@@ -161,10 +161,6 @@ int matTransposeCPU(const Matrix in, Matrix out, float* timeMsOut, double* bandw
     return EXIT_SUCCESS;
 }
 
-/******************************************
- * GPU kernels
- ******************************************/
-
 /// GPU row-to-row copy kernel (global memory)
 /// Performs a row-wise copy: out = in
 __global__ void rowCopyKernel(const float* input, float* output,
@@ -190,7 +186,7 @@ __global__ void rowCopyKernel(const float* input, float* output,
     }
 }
 
-/// GPU naïve matrix transpose kernel (no shared memory)
+/// GPU native matrix transpose kernel (no shared memory)
 /// Input:  width x height
 /// Output: height x width
 __global__ void transposeNaiveKernel(const float* input, float* output,
@@ -260,19 +256,11 @@ __global__ void transposeSharedKernel(const float* input, float* output,
     }
 }
 
-/******************************************
- * CPU comparison helper
- ******************************************/
-
 /// Compare two matrices for equality within EPSILON
 /// Returns true if matrices match
 bool matricesMatch(const Matrix& m1, const Matrix& m2) {
     return !(m1 != m2);
 }
-
-/******************************************
- * GPU wrapper functions
- ******************************************/
 
 /// GPU row-to-row copy wrapper
 /// out must have the same dimensions as in
@@ -326,7 +314,7 @@ int matRowCopyGPU(const Matrix in, Matrix out,
     return EXIT_SUCCESS;
 }
 
-/// GPU naïve transpose wrapper
+/// GPU native transpose wrapper
 /// out must be the transpose of in (dimX = in.dimY, dimY = in.dimX)
 int matTransposeGPUNaive(const Matrix in, Matrix out,
                          float* timeMsOut, double* bandwidthOut) {
@@ -430,21 +418,17 @@ int matTransposeGPUShared(const Matrix in, Matrix out,
     return EXIT_SUCCESS;
 }
 
-/******************************************
- * main
- ******************************************/
-
 int main(int argc, char* argv[]) {
-    unsigned int rows = 10000;  // dimY
-    unsigned int cols = 5000;   // dimX
+    unsigned int dimY = 10000;
+    unsigned int dimX = 5000;
 
-    // Allow overriding matrix dimensions from command line (rows cols)
+    // Allow overriding matrix dimensions from command line (dimY dimX)
     if (argc == 3) {
-        rows = (unsigned int)atoi(argv[1]);
-        cols = (unsigned int)atoi(argv[2]);
+        dimY = (unsigned int)atoi(argv[1]);
+        dimX = (unsigned int)atoi(argv[2]);
     }
 
-    printf("Matrix size (original): %u x %u (rows x cols)\n\n", rows, cols);
+    printf("Matrix size (original): %u x %u (dimY x dimX)\n\n", dimY, dimX);
 
     srand(0);
 
@@ -456,16 +440,16 @@ int main(int argc, char* argv[]) {
     Matrix M_trans_shared;// GPU shared transpose result
 
     // Generate original matrix
-    M = generateMatrix(cols, rows);
+    M = generateMatrix(dimX, dimY);
 
-    // Allocate copy matrix (same dimensions as M)
-    M_copy_gpu.dimX = cols;
-    M_copy_gpu.dimY = rows;
-    M_copy_gpu.elements = (float*)malloc((size_t)cols * (size_t)rows * sizeof(float));
+    // Allocate copy matrix
+    M_copy_gpu.dimX = dimX;
+    M_copy_gpu.dimY = dimY;
+    M_copy_gpu.elements = (float*)malloc((size_t)dimX * (size_t)dimY * sizeof(float));
 
-    // Allocate transpose matrices (dims swapped)
-    unsigned int transCols = rows;
-    unsigned int transRows = cols;
+    // Allocate transpose matrices
+    unsigned int transCols = dimY;
+    unsigned int transRows = dimX;
 
     M_trans_cpu.dimX = transCols;
     M_trans_cpu.dimY = transRows;
@@ -505,7 +489,7 @@ int main(int argc, char* argv[]) {
     printf("Row copy time:           %.3f ms\n", timeCopyMs);
     printf("Row copy effective BW:   %.3f GB/s\n\n", bandwidthCopy);
 
-    // 2) CPU transpose (reference)
+    // 2) CPU transpose
     printf("Running CPU matrix transpose...\n");
     float  timeCpuMs      = 0.0f;
     double bandwidthCpu   = 0.0;
@@ -516,12 +500,12 @@ int main(int argc, char* argv[]) {
     printf("CPU transpose time:      %.3f ms\n", timeCpuMs);
     printf("CPU effective BW:        %.3f GB/s\n\n", bandwidthCpu);
 
-    // 3) GPU naïve transpose
-    printf("Running GPU naïve transpose kernel...\n");
+    // 3) GPU native transpose
+    printf("Running GPU native transpose kernel...\n");
     float  timeNaiveMs    = 0.0f;
     double bandwidthNaive = 0.0;
     if (matTransposeGPUNaive(M, M_trans_naive, &timeNaiveMs, &bandwidthNaive) != EXIT_SUCCESS) {
-        fprintf(stderr, "GPU naïve transpose failed.\n");
+        fprintf(stderr, "GPU native transpose failed.\n");
         return EXIT_FAILURE;
     }
     if (!matricesMatch(M_trans_cpu, M_trans_naive)) {
