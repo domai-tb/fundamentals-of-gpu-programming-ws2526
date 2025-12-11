@@ -262,7 +262,7 @@ __global__ void upscaleBilinearKernelGlobal(const Image in, Image out) {
     out.elements[yOut * out.width + xOut] = value;
 }
 
-/// Global-memory convolution kernel (mask in global memory)
+/// Global-memory convolution kernel 
 __global__ void convolveKernelGlobal(const Image in, Image out, const float* mask, unsigned int maskWidth) {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -694,7 +694,7 @@ int main(int argc, char* argv[]) {
     bsUpscale.x = 16; bsUpscale.y = 16;
     bsConv.x    = 16; bsConv.y    = 16;
 
-    printf("Running GPU pipeline with global memory only (mask in global memory)...\n");
+    printf("Running GPU pipeline with global memory only ...\n");
     if (gpuPipelineGlobal(hIn, hMask, hGPUOutGlobal, bsUpscale, bsConv) != EXIT_SUCCESS) {
         fprintf(stderr, "GPU global pipeline failed.\n");
         return EXIT_FAILURE;
