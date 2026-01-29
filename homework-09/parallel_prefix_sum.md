@@ -69,44 +69,38 @@ Timing repetitions: CPU=20, GPU=200
 
 ## Analysis & Explaination
 
-### 1) CPU reference + GPU correctness check
+### Brent–Kung work-efficient scan behavior
 
-No mismatch warnings are printed, so for all tested sizes `n = 100k … 1M` the GPU inclusive scan output matches the CPU scan (as required for validation). The CPU reference is the correct baseline for correctness and speedup reporting.
-
-### 2) Brent–Kung work-efficient scan behavior
-
-Your GPU implementation is the standard **work-efficient scan** structure: **up-sweep (reduce) + down-sweep**, done in shared memory per block segment, and then extended to large `n` by scanning per-block totals and applying offsets. This matches the canonical description of work-efficient scan used in CUDA literature. ([NVIDIA Developer][1])
-
-### 3) Speedup table requirement (100k to 1M step 100k)
+The GPU implementation is the standard work-efficient scan structure: up-sweep (reduce) + down-sweep, done in shared memory per block segment, and then extended to large `n` by scanning per-block totals and applying offsets.
+I used [Chapter 39. Parallel Prefix Sum (Scan) with CUDA](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda) as additional reference.
 
 The printed table satisfies the requirement: 10 rows covering `100000 … 1000000` with a `100000` step.
 
----
+### Performance analysis of the measured times
 
-## Performance analysis of the measured times
+#### Scaling with `n`
 
-### Scaling with `n`
+Both CPU and GPU times grow approximately linearly with `n`, which is expected for scan (overall work _O(n)_). The GPU times grow more slowly, indicating better throughput.
 
-Both CPU and GPU times grow approximately linearly with `n`, which is expected for scan (overall work Θ(n)). The GPU times grow more slowly, indicating better throughput.
+#### Speedup trend
 
-### Speedup trend
-
-Speedup increases from **2.91× (100k)** to **4.29× (1M)** and then stabilizes around **~4.0–4.3×** for larger `n`.
+Speedup increases from 2.91x (100k) to 4.29x (1M) and then stabilizes around ~4.0–4.3x for larger `n`.
 
 Interpretation:
 
 - For smaller `n`, fixed costs (kernel launch, extra kernels for block sums/offsets, synchronization) are a larger fraction of total time.
-- As `n` grows, those fixed costs are amortized, so the speedup improves and approaches a plateau, which is typical for GPU scan implementations. ([NVIDIA Developer][1])
+- As `n` grows, those fixed costs are amortized, so the speedup improves and approaches a plateau (see [Chapter 39. Parallel Prefix Sum (Scan) with CUDA](https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda))
 
 The small dips (e.g., at 400k, 700k) are consistent with normal measurement noise (clock variability, OS scheduling, cache state, etc.) at sub-millisecond timings.
 
-### Memory-bandwidth-limited plateau
+#### Memory-bandwidth-limited plateau
 
-An integer scan has low arithmetic intensity: it must at least **read input + write output** (and does additional shared-memory traffic internally). Once `n` is large enough, performance tends to be dominated by memory throughput rather than arithmetic, so speedup saturates. This “scan is bandwidth-bound in practice” behavior is a standard conclusion in CUDA scan references. ([NVIDIA Developer][1])
+An integer scan has low arithmetic intensity: it must at least read input + write output (and does additional shared-memory traffic internally). Once `n` is large enough, performance tends to be dominated by
+memory throughput rather than arithmetic, so speedup saturates.
 
 A rough throughput estimate using only global read+write of the main array (8 bytes/element):
 
-- At **n = 1,000,000**, GPU time **0.136 ms** → ~**58.8 GB/s** effective read+write throughput.
-- At **n = 1,000,000**, CPU time **0.584 ms** → ~**13.7 GB/s** effective read+write throughput.
+- At n = 1,000,000, GPU time 0.136 ms → ~58.8 GB/s effective read+write throughput.
+- At n = 1,000,000, CPU time 0.584 ms → ~13.7 GB/s effective read+write throughput.
 
-That ratio aligns with the observed **~4.29×** speedup.
+That ratio aligns with the observed ~4.29x speedup.
