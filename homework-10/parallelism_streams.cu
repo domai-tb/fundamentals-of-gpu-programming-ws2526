@@ -52,7 +52,7 @@ void fillRandom(float* data, size_t count) {
     }
 }
 
-/// CPU frame processing (sequential analog of the GPU kernel)
+/// CPU frame processing
 void processFrameCPU(const float* in, float* out, unsigned int n, unsigned int iters) {
     StopWatchInterface* timer = NULL;
     sdkCreateTimer(&timer);
@@ -64,7 +64,7 @@ void processFrameCPU(const float* in, float* out, unsigned int n, unsigned int i
         for (unsigned int i = 0; i < n; ++i) {
             float v = in[i];
 
-            // 4-lane ILP-like update (mirrors GPU kernel)
+            // 4-lane ILP-like update
             float x0 = v;
             float x1 = v * 1.001f + 0.1f;
             float x2 = v * 0.999f - 0.1f;
@@ -239,7 +239,7 @@ float runSingleStream(
     dim3 block(256);
     dim3 grid((FRAME_ELEMS + block.x - 1) / block.x);
 
-    // Warm-up (one frame)
+    // Warm-up
     cudaErr(cudaMemcpyAsync(dIn, hInPinned, FRAME_BYTES, cudaMemcpyHostToDevice, 0));
     processFrameKernel<<<grid, block, 0, 0>>>(dIn, dOut, FRAME_ELEMS, iters);
     cudaErr(cudaGetLastError());
@@ -292,7 +292,7 @@ float runMultiStream(
     dim3 block(256);
     dim3 grid((FRAME_ELEMS + block.x - 1) / block.x);
 
-    // Warm-up (one frame per stream)
+    // Warm-up
     for (unsigned int s = 0; s < nStreams; ++s) {
         cudaErr(cudaMemcpyAsync(dIn[s], hInPinned, FRAME_BYTES, cudaMemcpyHostToDevice, streams[s]));
         processFrameKernel<<<grid, block, 0, streams[s]>>>(dIn[s], dOut[s], FRAME_ELEMS, iters);
@@ -340,25 +340,9 @@ int main(int argc, char* argv[]) {
     unsigned int nStreamsToTest[MAX_STREAMS] = {1, 2, 4, 8};
     unsigned int nTests = 4;
 
-    printf("HW#10: Streams overlap demo (NUM_FRAMES=%u, FRAME=%ux%u, %.2f MB/frame)\n",
-        NUM_FRAMES, FRAME_WIDTH, FRAME_HEIGHT, (double)FRAME_BYTES / (1024.0 * 1024.0));
-    printf("Timing repetitions: CPU=%u (one frame), GPU=%u (full pipeline)\n\n",
-        NUM_REPETITIONS_CPU, NUM_REPETITIONS_GPU);
-
     cudaErr(cudaSetDevice(0));
 
-    cudaDeviceProp prop;
-    cudaErr(cudaGetDeviceProperties(&prop, 0));
-
-    int canOverlap = 0;
-    cudaErr(cudaDeviceGetAttribute(&canOverlap, cudaDevAttrGpuOverlap, 0));
-
-    printf("GPU: %s\n", prop.name);
-    printf("  concurrentKernels: %d\n", prop.concurrentKernels);
-    printf("  asyncEngineCount:  %d\n", prop.asyncEngineCount);
-    printf("  canOverlap:        %d\n\n", canOverlap);
-
-    // Host pinned buffers (needed for true async H2D/D2H overlap)
+    // Host pinned buffers
     float* hInPinned  = NULL;
     float* hOut1Pinned = NULL;
     float* hOutNPinned = NULL;
@@ -370,7 +354,7 @@ int main(int argc, char* argv[]) {
     cudaErr(cudaHostAlloc((void**)&hOut1Pinned, totalBytes, cudaHostAllocDefault));
     cudaErr(cudaHostAlloc((void**)&hOutNPinned, totalBytes, cudaHostAllocDefault));
 
-    // CPU reference (pageable is fine)
+    // CPU reference
     float* hCPUFrameOut = (float*)malloc(FRAME_BYTES);
     if (hCPUFrameOut == NULL) {
         fprintf(stderr, "Fatal: failed to allocate CPU output buffer.\n");
@@ -391,7 +375,7 @@ int main(int argc, char* argv[]) {
     unsigned int iters = calibrateKernelIters(hInPinned, hOut1Pinned, dIn0, dOut0);
     printf("\n");
 
-    // CPU reference on first frame
+    // CPU refernece on first frame
     printf("Running CPU reference on first frame...\n");
     processFrameCPU(hInPinned, hCPUFrameOut, FRAME_ELEMS, iters);
     printf("CPU time (one frame): %.3f ms\n\n", EXECUTION_TIME_CPU_ONE_FRAME);
@@ -403,12 +387,11 @@ int main(int argc, char* argv[]) {
         EXECUTION_TIME_GPU_1STREAM, NUM_REPETITIONS_GPU, NUM_FRAMES);
 
     // Check correctness for first frame
-    printf("Correctness check (frame 0): ");
     bool ok1 = compareFrames(hCPUFrameOut, hOut1Pinned, FRAME_ELEMS);
     if (ok1) {
-        printf("matches CPU reference.\n\n");
+        printf("Correctness: Matches CPU reference.\n\n");
     } else {
-        printf("does NOT match CPU reference.\n\n");
+        printf("Correctness: Does NOT match CPU reference!!\n\n");
     }
 
     // Multi-stream setup (max)
@@ -439,26 +422,22 @@ int main(int argc, char* argv[]) {
         }
 
         if (nS == 1) {
-            printf("| %7u | %13.3f | %19.2fx |\n",
-                nS, EXECUTION_TIME_GPU_1STREAM, 1.0f);
+            printf("| %7u | %13.3f | %19.2fx |\n", nS, EXECUTION_TIME_GPU_1STREAM, 1.0f);
             continue;
         }
 
         EXECUTION_TIME_GPU_NSTREAMS = runMultiStream(hInPinned, hOutNPinned, dIn, dOut, streams, nS, iters);
 
         float speedup = EXECUTION_TIME_GPU_1STREAM / EXECUTION_TIME_GPU_NSTREAMS;
-
-        printf("| %7u | %13.3f | %19.2fx |\n",
-            nS, EXECUTION_TIME_GPU_NSTREAMS, speedup);
+        printf("| %7u | %13.3f | %19.2fx |\n", nS, EXECUTION_TIME_GPU_NSTREAMS, speedup);
     }
 
-    // Correctness check for multi-stream output (frame 0)
-    printf("\nCorrectness check (multi-stream, frame 0): ");
+    // Correctness check for multi-stream output
     bool okN = compareFrames(hCPUFrameOut, hOutNPinned, FRAME_ELEMS);
     if (okN) {
-        printf("matches CPU reference.\n");
+        printf("Correctness: Matches CPU reference.\n\n");
     } else {
-        printf("does NOT match CPU reference.\n");
+        printf("Correctness: Does NOT match CPU reference!!\n\n");
     }
 
     // Cleanup
